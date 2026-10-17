@@ -1,5 +1,5 @@
-name: stock_pyme
-description: StockPyme — inventario y punto de venta para almacenes y pymes. Desarrollado por Rivera Systems.
+name: nutrysleep
+description: "NutrySleep - Kit de sueño de Rivera Systems (familia NutryScan)."
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -9,48 +9,37 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  provider: ^6.1.2
   shared_preferences: ^2.3.2
-  mobile_scanner: ^7.0.0
-  in_app_purchase: ^3.2.0
-  in_app_purchase_android: ^0.4.0
-  cupertino_icons: ^1.0.8
+  audioplayers: ^6.1.0
+  path_provider: ^2.1.4
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
   flutter_launcher_icons: ^0.14.1
   flutter_native_splash: ^2.4.1
+
+# Ícono de la app (se genera en GitHub Actions)
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#0D1222"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  min_sdk_android: 21
+
+# Pantalla nativa al abrir (evita el destello blanco)
+flutter_native_splash:
+  color: "#0D1222"
+  image: assets/icon/logo.png
+  android_12:
+    color: "#0D1222"
+    image: assets/icon/splash_android12.png
+  ios: false
+  web: false
 
 flutter:
   uses-material-design: true
   assets:
-    - assets/branding/
-
-# Ícono de la app: dart run flutter_launcher_icons
-flutter_launcher_icons:
-  android: true
-  ios: false
-  image_path: "assets/branding/icon.png"
-  adaptive_icon_background: "#0F766E"
-  adaptive_icon_foreground: "assets/branding/icon_foreground.png"
-  min_sdk_android: 23
-  web:
-    generate: true
-    image_path: "assets/branding/icon.png"
-    background_color: "#0F766E"
-    theme_color: "#0F766E"
-
-# Pantalla de inicio nativa: dart run flutter_native_splash:create
-flutter_native_splash:
-  color: "#0F766E"
-  image: assets/branding/splash_logo.png
-  branding: assets/branding/branding.png
-  branding_mode: bottom
-  android_12:
-    color: "#0F766E"
-    image: assets/branding/splash_android12.png
-    branding: assets/branding/branding.png
-  web: true
-  ios: false
+    - assets/icon/
+    - assets/brand/

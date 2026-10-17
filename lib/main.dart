@@ -1,45 +1,36 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter/services.dart';
 
+import 'screens/main_shell.dart';
 import 'screens/splash_screen.dart';
-import 'services/cart_service.dart';
-import 'services/inventory_service.dart';
+import 'services/noise_service.dart';
 import 'services/storage_service.dart';
-import 'services/subscription_service.dart';
-import 'utils/constants.dart';
-import 'utils/theme.dart';
+import 'utils/app_colors.dart';
+import 'utils/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  final storage = await StorageService.create();
-  final inventory = InventoryService(storage);
-  await inventory.init();
-  final subscription = SubscriptionService(storage);
-  await subscription.init();
-
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider.value(value: inventory),
-        ChangeNotifierProvider.value(value: subscription),
-        ChangeNotifierProvider(create: (_) => CartService()),
-      ],
-      child: const StockPymeApp(),
-    ),
-  );
+  await StorageService.instance.init();
+  await NoiseService.instance.init();
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+    systemNavigationBarColor: AppColors.navBar,
+    systemNavigationBarIconBrightness: Brightness.light,
+  ));
+  runApp(const NutrySleepApp());
 }
 
-class StockPymeApp extends StatelessWidget {
-  const StockPymeApp({super.key});
+class NutrySleepApp extends StatelessWidget {
+  const NutrySleepApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: AppConstants.appName,
+      title: 'NutrySleep',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
+      theme: AppTheme.dark,
+      navigatorObservers: [routeObserver],
       home: const SplashScreen(),
     );
   }

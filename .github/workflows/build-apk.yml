@@ -1,5 +1,6 @@
 # Genera el APK de StockPyme automáticamente en GitHub.
-# - Cada push a main: el APK queda en la pestaña Actions (Artifacts).
+# - Cada push a main: el APK queda en Releases como versión de prueba.
+#   (Se usa Releases porque no consume el espacio de Artifacts de la cuenta.)
 # - Al crear una etiqueta vX.Y.Z: además se publica como Release descargable.
 name: Generar APK
 
@@ -64,14 +65,16 @@ jobs:
           mv build/app/outputs/flutter-apk/app-release.apk "StockPyme-v${VERSION}.apk"
           echo "APK_NAME=StockPyme-v${VERSION}.apk" >> "$GITHUB_ENV"
 
-      - name: Guardar APK (pestaña Actions)
-        uses: actions/upload-artifact@v4
+      - name: Publicar APK de prueba (cada push a main)
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
         with:
-          name: ${{ env.APK_NAME }}
-          path: ${{ env.APK_NAME }}
-          retention-days: 30
+          tag_name: build-${{ github.run_number }}
+          name: "StockPyme prueba (build ${{ github.run_number }})"
+          prerelease: true
+          files: ${{ env.APK_NAME }}
 
-      - name: Publicar Release (solo con etiqueta vX.Y.Z)
+      - name: Publicar versión oficial (solo con etiqueta vX.Y.Z)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
