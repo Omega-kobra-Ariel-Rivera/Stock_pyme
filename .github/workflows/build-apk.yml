@@ -48,6 +48,33 @@ jobs:
           done
           grep -n "CAMERA" "$MANIFEST"
 
+      - name: Protección (sin capturas ni respaldos)
+        run: |
+          FILE=$(find android/app/src/main -name 'MainActivity.kt' | head -1)
+          PKG=$(grep '^package' "$FILE")
+          cat > "$FILE" <<EOF
+          $PKG
+
+          import android.os.Bundle
+          import android.view.WindowManager
+          import io.flutter.embedding.android.FlutterActivity
+
+          class MainActivity : FlutterActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  window.setFlags(
+                      WindowManager.LayoutParams.FLAG_SECURE,
+                      WindowManager.LayoutParams.FLAG_SECURE
+                  )
+                  super.onCreate(savedInstanceState)
+              }
+          }
+          EOF
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          grep -q 'android:allowBackup' "$MANIFEST" || \
+            sed -i 's#<application#<application android:allowBackup="false" android:fullBackupContent="false"#' "$MANIFEST"
+          echo "--- $FILE"; cat "$FILE"
+          grep -n "allowBackup" "$MANIFEST"
+
       - name: Descargar paquetes
         run: flutter pub get
 
@@ -57,7 +84,7 @@ jobs:
           dart run flutter_native_splash:create
 
       - name: Compilar APK
-        run: flutter build apk --release
+        run: flutter build apk --release --obfuscate --split-debug-info=build/debug-info
 
       - name: Renombrar APK
         run: |
