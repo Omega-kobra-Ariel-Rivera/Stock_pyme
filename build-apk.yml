@@ -1,0 +1,79 @@
+# Genera el APK de StockPyme automáticamente en GitHub.
+# - Cada push a main: el APK queda en la pestaña Actions (Artifacts).
+# - Al crear una etiqueta vX.Y.Z: además se publica como Release descargable.
+name: Generar APK
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Instalar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Instalar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Crear carpeta android si falta
+        run: |
+          if [ ! -d android ]; then
+            flutter create --org cl.riverasystems --project-name stock_pyme --platforms android .
+          fi
+
+      - name: Permiso de cámara y minSdk 23
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          grep -q "android.permission.CAMERA" "$MANIFEST" || \
+            sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA" />\n    <application#' "$MANIFEST"
+          for f in android/app/build.gradle.kts android/app/build.gradle; do
+            [ -f "$f" ] && sed -i -E 's/minSdk = flutter\.minSdkVersion/minSdk = 23/; s/minSdkVersion flutter\.minSdkVersion/minSdkVersion 23/' "$f"
+          done
+          grep -n "CAMERA" "$MANIFEST"
+
+      - name: Descargar paquetes
+        run: flutter pub get
+
+      - name: Generar ícono y pantalla de inicio
+        run: |
+          dart run flutter_launcher_icons
+          dart run flutter_native_splash:create
+
+      - name: Compilar APK
+        run: flutter build apk --release
+
+      - name: Renombrar APK
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+          mv build/app/outputs/flutter-apk/app-release.apk "StockPyme-v${VERSION}.apk"
+          echo "APK_NAME=StockPyme-v${VERSION}.apk" >> "$GITHUB_ENV"
+
+      - name: Guardar APK (pestaña Actions)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}
+          path: ${{ env.APK_NAME }}
+          retention-days: 30
+
+      - name: Publicar Release (solo con etiqueta vX.Y.Z)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.APK_NAME }}
+          generate_release_notes: true
