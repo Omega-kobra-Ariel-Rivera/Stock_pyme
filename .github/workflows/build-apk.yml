@@ -75,6 +75,20 @@ jobs:
           echo "--- $FILE"; cat "$FILE"
           grep -n "allowBackup" "$MANIFEST"
 
+      - name: Reglas de compilación (evita que se borren complementos)
+        run: |
+          cat > android/app/proguard-rules.pro <<'EOF'
+          -keep class io.flutter.plugins.** { *; }
+          -keep class io.flutter.plugin.** { *; }
+          -keep class com.github.dart_lang.jni.** { *; }
+          -keep class kotlin.coroutines.** { *; }
+          -keep class kotlinx.coroutines.** { *; }
+          -keep class dev.steenbakker.mobile_scanner.** { *; }
+          -keep class com.android.billingclient.** { *; }
+          -dontwarn com.google.android.play.core.**
+          EOF
+          cat android/app/proguard-rules.pro
+
       - name: Descargar paquetes
         run: flutter pub get
 
