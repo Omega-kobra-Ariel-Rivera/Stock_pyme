@@ -48,32 +48,21 @@ jobs:
           done
           grep -n "CAMERA" "$MANIFEST"
 
-      - name: Protección (sin capturas ni respaldos)
+      - name: Protección (sin respaldos) y capturas permitidas
         run: |
           FILE=$(find android/app/src/main -name 'MainActivity.kt' | head -1)
           PKG=$(grep '^package' "$FILE")
           cat > "$FILE" <<EOF
           $PKG
 
-          import android.os.Bundle
-          import android.view.WindowManager
           import io.flutter.embedding.android.FlutterActivity
 
-          class MainActivity : FlutterActivity() {
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  window.setFlags(
-                      WindowManager.LayoutParams.FLAG_SECURE,
-                      WindowManager.LayoutParams.FLAG_SECURE
-                  )
-                  super.onCreate(savedInstanceState)
-              }
-          }
+          class MainActivity : FlutterActivity()
           EOF
           MANIFEST=android/app/src/main/AndroidManifest.xml
           grep -q 'android:allowBackup' "$MANIFEST" || \
             sed -i 's#<application#<application android:allowBackup="false" android:fullBackupContent="false"#' "$MANIFEST"
           echo "--- $FILE"; cat "$FILE"
-          grep -n "allowBackup" "$MANIFEST"
 
       - name: Reglas de compilación (evita que se borren complementos)
         run: |
@@ -81,13 +70,45 @@ jobs:
           -keep class io.flutter.plugins.** { *; }
           -keep class io.flutter.plugin.** { *; }
           -keep class com.github.dart_lang.jni.** { *; }
-          -keep class kotlin.coroutines.** { *; }
+          -keep class kotlin.** { *; }
           -keep class kotlinx.coroutines.** { *; }
           -keep class dev.steenbakker.mobile_scanner.** { *; }
           -keep class com.android.billingclient.** { *; }
           -dontwarn com.google.android.play.core.**
           EOF
           cat android/app/proguard-rules.pro
+
+      - name: Desactivar limpieza de código (R8)
+        run: |
+          if [ -f android/app/build.gradle.kts ]; then
+            cat >> android/app/build.gradle.kts <<'EOF'
+
+          // StockPyme: sin R8 para no borrar clases de los complementos.
+          android {
+              buildTypes {
+                  getByName("release") {
+                      isMinifyEnabled = false
+                      isShrinkResources = false
+                  }
+              }
+          }
+          EOF
+            tail -12 android/app/build.gradle.kts
+          else
+            cat >> android/app/build.gradle <<'EOF'
+
+          // StockPyme: sin R8 para no borrar clases de los complementos.
+          android {
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                      shrinkResources false
+                  }
+              }
+          }
+          EOF
+            tail -12 android/app/build.gradle
+          fi
 
       - name: Descargar paquetes
         run: flutter pub get

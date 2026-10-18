@@ -9,7 +9,7 @@
 -keep class com.github.dart_lang.jni.** { *; }
 
 # Corrutinas de Kotlin (aparecen en las firmas de los métodos)
--keep class kotlin.coroutines.** { *; }
+-keep class kotlin.** { *; }
 -keep class kotlinx.coroutines.** { *; }
 
 # Escáner de códigos de barras

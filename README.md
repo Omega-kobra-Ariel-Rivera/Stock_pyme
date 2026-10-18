@@ -140,8 +140,7 @@ Sube la carpeta `build/web` a Netlify (como tus otros proyectos). En web la prue
 
 | Protección | Cómo funciona |
 |---|---|
-| Sin capturas ni grabación de pantalla | `FLAG_SECURE` en `MainActivity.kt`: la pantalla sale negra en capturas, grabaciones y al transmitir; la app se ve en blanco en "apps recientes" |
-| Código ofuscado | Se compila con `--obfuscate`: los nombres de clases y funciones quedan ilegibles si alguien descompila el APK |
+| Código ofuscado | Se compila con `--obfuscate` (la limpieza R8 de Android está desactivada porque borraba clases de los complementos): los nombres de clases y funciones quedan ilegibles si alguien descompila el APK |
 | Sin respaldos | `android:allowBackup="false"`: los datos no se pueden extraer con respaldos de Android ni `adb backup` |
 | Código privado | Repositorio de GitHub en modo privado |
 | Cobro | La suscripción la valida Google Play; una copia del APK no trae la suscripción |
