@@ -73,8 +73,11 @@ class _SplashScreenState extends State<SplashScreen>
                       ),
                       const SizedBox(height: 6),
                       const Text(
-                        'Inventario y ventas para tu negocio',
-                        style: TextStyle(color: Color(0xFFCCEDE7), fontSize: 15),
+                        AppConstants.tagline,
+                        style: TextStyle(
+                          color: AppTheme.onBrandMuted,
+                          fontSize: 15,
+                        ),
                       ),
                     ],
                   ),
@@ -82,8 +85,8 @@ class _SplashScreenState extends State<SplashScreen>
               ),
             ),
             const Padding(
-              padding: EdgeInsets.only(bottom: 24),
-              child: MadeByRivera(color: Color(0xFFCCEDE7)),
+              padding: EdgeInsets.only(bottom: 28),
+              child: MadeByRivera(onBrand: true),
             ),
           ],
         ),

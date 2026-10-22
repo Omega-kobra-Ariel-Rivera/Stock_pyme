@@ -1,34 +1,49 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:in_app_purchase/in_app_purchase.dart';
-import 'package:in_app_purchase_android/in_app_purchase_android.dart';
+import 'package:flutter/widgets.dart';
+import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/constants.dart';
+import '../utils/id_generator.dart';
 import 'storage_service.dart';
 
-/// Prueba gratis + suscripción mensual con Google Play Billing.
-class SubscriptionService extends ChangeNotifier {
+/// Prueba gratis + suscripción mensual con Mercado Pago.
+///
+/// La app nunca guarda el Access Token de Mercado Pago: habla con un
+/// servidor propio (funciones de Netlify) que lo tiene como variable secreta.
+class SubscriptionService extends ChangeNotifier with WidgetsBindingObserver {
   SubscriptionService(this._storage);
 
   final StorageService _storage;
 
-  // Se accede solo en Android: en web no hay tienda.
-  InAppPurchase get _iap => InAppPurchase.instance;
+  static final RegExp _emailPattern =
+      RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
-  StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
   DateTime _trialStart = DateTime.now();
   bool _subscribed = false;
-  bool _storeAvailable = false;
   bool _loading = false;
-  ProductDetails? _product;
   String? _error;
+  String? _info;
+  String _accountId = '';
+  String _payerEmail = '';
+  String? _preapprovalId;
+  DateTime? _lastCheck;
 
   bool get isAndroid =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   bool get isSubscribed => _subscribed;
   bool get loading => _loading;
   String? get error => _error;
+
+  /// Mensaje informativo (por ejemplo, "pago pendiente").
+  String? get info => _info;
+  String get payerEmail => _payerEmail;
+
+  /// Hay un pago iniciado en Mercado Pago que aún no se confirma.
+  bool get hasPendingPayment => _preapprovalId != null && !_subscribed;
 
   int get trialDaysLeft {
     final end = _trialStart.add(const Duration(days: AppConstants.trialDays));
@@ -40,8 +55,7 @@ class SubscriptionService extends ChangeNotifier {
   bool get inTrial => !_subscribed && trialDaysLeft > 0;
   bool get hasAccess => _subscribed || trialDaysLeft > 0;
 
-  String get priceLabel =>
-      '${_product?.price ?? AppConstants.fallbackPrice} / mes';
+  String get priceLabel => '${AppConstants.fallbackPrice} / mes';
 
   Future<void> init() async {
     final saved = _storage.getString(StorageKeys.trialStart);
@@ -53,77 +67,182 @@ class SubscriptionService extends ChangeNotifier {
     } else {
       _trialStart = parsed;
     }
-    _subscribed = _storage.getBool(StorageKeys.subscribed) ?? false;
 
-    // La tienda se conecta en segundo plano para no retrasar el inicio.
-    if (isAndroid) unawaited(_connectStore());
+    _subscribed = _storage.getBool(StorageKeys.subscribed) ?? false;
+    _payerEmail = _storage.getString(StorageKeys.payerEmail) ?? '';
+    final savedId = _storage.getString(StorageKeys.preapprovalId);
+    _preapprovalId = (savedId == null || savedId.isEmpty) ? null : savedId;
+    final last = _storage.getString(StorageKeys.lastPaymentCheck);
+    _lastCheck = last == null ? null : DateTime.tryParse(last);
+
+    var account = _storage.getString(StorageKeys.accountId);
+    if (account == null || account.isEmpty) {
+      account = 'sp_${newId()}';
+      await _storage.setString(StorageKeys.accountId, account);
+    }
+    _accountId = account;
+
+    WidgetsBinding.instance.addObserver(this);
+
+    // Revisa el estado en segundo plano para no retrasar el inicio.
+    if (_preapprovalId != null && _isCheckDue) {
+      unawaited(checkPayment(silent: true));
+    }
   }
 
-  Future<void> _connectStore() async {
+  bool get _isCheckDue {
+    final last = _lastCheck;
+    if (last == null) return true;
+    return DateTime.now().difference(last).inHours >=
+        AppConstants.paymentCheckHours;
+  }
+
+  /// Al volver a la app desde Mercado Pago, revisa si el pago se aprobó.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && hasPendingPayment && !_loading) {
+      unawaited(checkPayment(silent: true));
+    }
+  }
+
+  Future<void> setPayerEmail(String email) async {
+    _payerEmail = email.trim().toLowerCase();
+    await _storage.setString(StorageKeys.payerEmail, _payerEmail);
+  }
+
+  /// Crea la suscripción y abre Mercado Pago para pagar.
+  Future<void> subscribe([String? email]) async {
+    _error = null;
+    _info = null;
+    if (email != null) await setPayerEmail(email);
+    if (!_emailPattern.hasMatch(_payerEmail)) {
+      _error = 'Escribe un correo válido. Mercado Pago lo usa para tu suscripción.';
+      notifyListeners();
+      return;
+    }
+
+    _loading = true;
+    notifyListeners();
     try {
-      _storeAvailable = await _iap.isAvailable();
-      if (!_storeAvailable) {
-        notifyListeners();
+      final response = await http
+          .post(
+            Uri.parse('${AppConstants.paymentsApiUrl}/crear-suscripcion'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': _payerEmail, 'accountId': _accountId}),
+          )
+          .timeout(const Duration(seconds: 20));
+      final data = _decode(response.body);
+
+      if (response.statusCode != 200 || data['init_point'] == null) {
+        _error = (data['error'] as String?) ??
+            'No se pudo iniciar el pago. Inténtalo otra vez.';
         return;
       }
-      _purchaseSub ??= _iap.purchaseStream.listen(
-        _onPurchaseUpdates,
-        onError: (Object e) {
-          _error = 'Error de Google Play: $e';
-          _loading = false;
-          notifyListeners();
-        },
+
+      _preapprovalId = data['id'] as String?;
+      if (_preapprovalId != null) {
+        await _storage.setString(StorageKeys.preapprovalId, _preapprovalId!);
+      }
+
+      final opened = await launchUrl(
+        Uri.parse(data['init_point'] as String),
+        mode: LaunchMode.externalApplication,
       );
-      final response =
-          await _iap.queryProductDetails({AppConstants.subscriptionId});
-      if (response.productDetails.isNotEmpty) {
-        _product = response.productDetails.first;
+      if (!opened) {
+        _error = 'No se pudo abrir Mercado Pago en este teléfono.';
+      } else {
+        _info =
+            'Completa el pago en Mercado Pago y vuelve a StockPyme. Lo revisaremos al volver.';
       }
-      await _syncActiveSubscription();
-    } catch (e) {
-      _error = 'No se pudo conectar con Google Play.';
-    }
-    notifyListeners();
-  }
-
-  /// Consulta a Google Play si la suscripción sigue activa.
-  Future<void> _syncActiveSubscription() async {
-    final android =
-        _iap.getPlatformAddition<InAppPurchaseAndroidPlatformAddition>();
-    final response = await android.queryPastPurchases();
-    if (response.error != null) return; // sin conexión: se mantiene el caché
-    final active = response.pastPurchases
-        .any((p) => p.productID == AppConstants.subscriptionId);
-    await _setSubscribed(active);
-    for (final purchase in response.pastPurchases) {
-      if (purchase.pendingCompletePurchase) {
-        await _iap.completePurchase(purchase);
-      }
+    } on TimeoutException {
+      _error = 'Mercado Pago está tardando. Revisa tu conexión e inténtalo otra vez.';
+    } catch (_) {
+      _error = 'Sin conexión. Conéctate a internet para pagar.';
+    } finally {
+      _loading = false;
+      notifyListeners();
     }
   }
 
-  Future<void> _onPurchaseUpdates(List<PurchaseDetails> purchases) async {
-    for (final purchase in purchases) {
-      if (purchase.productID != AppConstants.subscriptionId) continue;
-      switch (purchase.status) {
-        case PurchaseStatus.pending:
-          _loading = true;
-        case PurchaseStatus.purchased:
-        case PurchaseStatus.restored:
+  /// Consulta el estado de la suscripción en Mercado Pago.
+  /// Con [silent] no muestra errores (revisiones automáticas).
+  Future<void> checkPayment({bool silent = false}) async {
+    final id = _preapprovalId;
+    if (id == null) {
+      if (!silent) {
+        _error = 'Aún no has iniciado un pago desde este teléfono.';
+        notifyListeners();
+      }
+      return;
+    }
+
+    if (!silent) {
+      _error = null;
+      _info = null;
+      _loading = true;
+      notifyListeners();
+    }
+    try {
+      final response = await http
+          .get(Uri.parse(
+              '${AppConstants.paymentsApiUrl}/estado-suscripcion?id=${Uri.encodeQueryComponent(id)}'))
+          .timeout(const Duration(seconds: 20));
+      final data = _decode(response.body);
+      if (response.statusCode != 200) {
+        if (!silent) {
+          _error = (data['error'] as String?) ??
+              'No se pudo revisar el pago. Inténtalo más tarde.';
+        }
+        return;
+      }
+
+      final status = data['status'] as String? ?? '';
+      _lastCheck = DateTime.now();
+      await _storage.setString(
+          StorageKeys.lastPaymentCheck, _lastCheck!.toIso8601String());
+
+      switch (status) {
+        case 'authorized':
           await _setSubscribed(true);
-          _loading = false;
-          _error = null;
-        case PurchaseStatus.error:
-          _error = purchase.error?.message ?? 'La compra no se completó.';
-          _loading = false;
-        case PurchaseStatus.canceled:
-          _loading = false;
+          _info = null;
+        case 'pending':
+          if (!silent) {
+            _info = 'El pago aún está pendiente en Mercado Pago.';
+          }
+        case 'paused':
+        case 'cancelled':
+          await _setSubscribed(false);
+          if (!silent) {
+            _error = status == 'paused'
+                ? 'Tu suscripción está pausada en Mercado Pago.'
+                : 'Tu suscripción fue cancelada. Puedes suscribirte otra vez.';
+          }
+          if (status == 'cancelled') {
+            _preapprovalId = null;
+            await _storage.setString(StorageKeys.preapprovalId, '');
+          }
       }
-      if (purchase.pendingCompletePurchase) {
-        await _iap.completePurchase(purchase);
-      }
+    } on TimeoutException {
+      if (!silent) _error = 'Mercado Pago está tardando. Inténtalo otra vez.';
+    } catch (_) {
+      // Sin conexión: se mantiene el último estado guardado.
+      if (!silent) _error = 'Sin conexión. Conéctate a internet para revisar el pago.';
+    } finally {
+      _loading = false;
+      notifyListeners();
     }
-    notifyListeners();
+  }
+
+  /// Compatibilidad con la versión anterior ("restaurar compra").
+  Future<void> restore() => checkPayment();
+
+  Map<String, dynamic> _decode(String body) {
+    try {
+      final value = jsonDecode(body);
+      return value is Map<String, dynamic> ? value : <String, dynamic>{};
+    } catch (_) {
+      return <String, dynamic>{};
+    }
   }
 
   Future<void> _setSubscribed(bool value) async {
@@ -131,58 +250,9 @@ class SubscriptionService extends ChangeNotifier {
     await _storage.setBool(StorageKeys.subscribed, value);
   }
 
-  Future<void> subscribe() async {
-    _error = null;
-    if (!isAndroid) {
-      _error =
-          'La suscripción se contrata desde la app Android en Google Play.';
-      notifyListeners();
-      return;
-    }
-    if (!_storeAvailable || _product == null) {
-      _error =
-          'La suscripción no está disponible ahora. Revisa tu conexión e inténtalo otra vez.';
-      notifyListeners();
-      await _connectStore();
-      return;
-    }
-    _loading = true;
-    notifyListeners();
-    try {
-      await _iap.buyNonConsumable(
-          purchaseParam: PurchaseParam(productDetails: _product!));
-    } catch (e) {
-      _error = 'No se pudo iniciar la compra.';
-      _loading = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> restore() async {
-    _error = null;
-    if (!isAndroid) {
-      _error = 'Restaura tu compra desde la app Android.';
-      notifyListeners();
-      return;
-    }
-    _loading = true;
-    notifyListeners();
-    try {
-      if (!_storeAvailable) await _connectStore();
-      await _syncActiveSubscription();
-      if (!_subscribed) {
-        _error = 'No encontramos una suscripción activa en esta cuenta de Google.';
-      }
-    } catch (e) {
-      _error = 'No se pudo restaurar la compra.';
-    }
-    _loading = false;
-    notifyListeners();
-  }
-
   @override
   void dispose() {
-    _purchaseSub?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 }

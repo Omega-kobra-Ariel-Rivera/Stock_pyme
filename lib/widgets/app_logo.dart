@@ -20,22 +20,64 @@ class AppLogo extends StatelessWidget {
   }
 }
 
-/// Firma "Hecho por Rivera Systems".
-class MadeByRivera extends StatelessWidget {
-  const MadeByRivera({super.key, this.color});
+/// Logo de Rivera Systems (escudo).
+class CompanyLogo extends StatelessWidget {
+  const CompanyLogo({super.key, this.size = 40});
 
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      AppConstants.companyLogoPath,
+      width: size,
+      height: size,
+      filterQuality: FilterQuality.medium,
+    );
+  }
+}
+
+/// Firma "Hecho por Rivera Systems" con el logo de la empresa.
+/// Usa [onBrand] cuando va sobre el fondo verde de la marca.
+class MadeByRivera extends StatelessWidget {
+  const MadeByRivera({super.key, this.onBrand = false, this.color});
+
+  final bool onBrand;
+
+  /// Color del texto (por compatibilidad con versiones anteriores).
   final Color? color;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Text(
-      'Hecho por ${AppConstants.company}',
-      textAlign: TextAlign.center,
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: color ?? scheme.onSurfaceVariant,
-            letterSpacing: 0.3,
-          ),
+    final muted = color ??
+        (onBrand ? const Color(0xFFCCEDE7) : scheme.onSurfaceVariant);
+    final strong = onBrand || color != null ? Colors.white : scheme.onSurface;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const CompanyLogo(size: 30),
+        const SizedBox(width: 10),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Hecho por',
+              style: TextStyle(fontSize: 11, color: muted, letterSpacing: 0.3),
+            ),
+            Text(
+              AppConstants.company,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: strong,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

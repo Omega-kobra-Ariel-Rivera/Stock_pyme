@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../services/inventory_service.dart';
 import '../utils/formatters.dart';
+import '../utils/theme.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/product_tile.dart';
 import '../widgets/stat_card.dart';
@@ -18,7 +19,6 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final inv = context.watch<InventoryService>();
-    final text = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
     final low = inv.lowStockProducts;
     final recent = inv.sales.take(5).toList();
@@ -49,8 +49,12 @@ class DashboardScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           const TrialBanner(),
-          Text('Hoy', style: text.titleMedium),
-          const SizedBox(height: 8),
+          _TodaySummary(
+            total: inv.todayTotal,
+            profit: inv.todayProfit,
+            count: inv.todaySalesCount,
+          ),
+          const SizedBox(height: 12),
           GridView.count(
             crossAxisCount: 2,
             shrinkWrap: true,
@@ -59,16 +63,6 @@ class DashboardScreen extends StatelessWidget {
             crossAxisSpacing: 12,
             childAspectRatio: 1.45,
             children: [
-              StatCard(
-                icon: Icons.payments_outlined,
-                label: 'Ventas (${inv.todaySalesCount})',
-                value: formatCLP(inv.todayTotal),
-              ),
-              StatCard(
-                icon: Icons.trending_up,
-                label: 'Ganancia',
-                value: formatCLP(inv.todayProfit),
-              ),
               StatCard(
                 icon: Icons.warehouse_outlined,
                 label: 'Valor del inventario',
@@ -145,8 +139,123 @@ class DashboardScreen extends StatelessWidget {
               ),
             ),
           const SizedBox(height: 32),
-          const MadeByRivera(),
+          const Center(child: MadeByRivera()),
           const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
+/// Resumen destacado de las ventas del día.
+class _TodaySummary extends StatelessWidget {
+  const _TodaySummary({
+    required this.total,
+    required this.profit,
+    required this.count,
+  });
+
+  final int total;
+  final int profit;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppTheme.seed, AppTheme.seedDark],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'Ventas de hoy',
+                style: TextStyle(
+                  color: AppTheme.onBrandMuted,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                formatDate(DateTime.now()),
+                style: const TextStyle(
+                  color: AppTheme.onBrandMuted,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              formatCLP(total),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 36,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _SummaryPill(
+                icon: Icons.receipt_long_outlined,
+                label: count == 1 ? '1 venta' : '$count ventas',
+              ),
+              _SummaryPill(
+                icon: Icons.trending_up,
+                label: 'Ganancia ${formatCLP(profit)}',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryPill extends StatelessWidget {
+  const _SummaryPill({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );

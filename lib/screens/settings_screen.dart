@@ -134,7 +134,12 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const AppLogo(size: 40),
             title: Text('${AppConstants.appName} ${AppConstants.appVersion}'),
-            subtitle: const Text('Hecho por ${AppConstants.company}'),
+            subtitle: const Text(AppConstants.tagline),
+          ),
+          ListTile(
+            leading: const CompanyLogo(size: 40),
+            title: const Text('Desarrollado por ${AppConstants.company}'),
+            subtitle: const Text(AppConstants.companyLocation),
           ),
           const SizedBox(height: 24),
         ],
